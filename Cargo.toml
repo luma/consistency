@@ -1,0 +1,9 @@
+[package]
+name = "consistent_hashing"
+version = "0.1.0"
+authors = ["Rolly Fordham <rolly@luma.co.nz>"]
+
+[dependencies]
+rust-crypto = "^0.2"
+lazy_static = "0.1.*"
+clippy = "*"
