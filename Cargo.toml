@@ -1,14 +1,12 @@
 [package]
 name = "consistency"
-version = "0.1.0"
+version = "1.0.0.pre-0"
 authors = ["Rolly Fordham <rolly@luma.co.nz>"]
 description = "A small crate that implements a consistently hashed ring of nodes"
-documentation = "..."
-homepage = "..."
-repository = "..."
+homepage = "https://github.com/luma/consistency"
+repository = "https://github.com/luma/consistency"
 license = "MIT"
 
 [dependencies]
 rust-crypto = "^0.2"
-lazy_static = "0.1.*"
 clippy = "*"
