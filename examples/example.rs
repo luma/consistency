@@ -3,7 +3,9 @@ use std::fmt;
 use std::cmp::Ordering;
 use consistency::{Node, Ring};
 
-#[derive(Debug, Clone, Eq, Ord)]
+// Create your node that will be hashed. You'll want to provide a way to uniquely identify
+// the node. In this case we'll do it with an id property.
+#[derive(Clone, Eq, Ord)]
 struct TestNode {
   id: String,
   ip: &'static str,
@@ -20,9 +22,12 @@ impl TestNode {
   }
 }
 
-
+// It must implement the consistency::Node trait
+// Specifically this means that you'll need to implement the Clone, Display, Eq, and Ord traits and
+// also a name method (fn name(&self) -> String).
 impl Node for TestNode {
   fn name(&self) -> String {
+    // id is our unique id, so we'll just return that.
     self.id.clone()
   }
 }
@@ -50,6 +55,7 @@ fn main() {
   let test_node1 = TestNode::new("Foo", "192.168.0.1", 1234);
   let test_node2 = TestNode::new("Bar", "192.168.0.2", 1234);
   let test_node3 = TestNode::new("Baz", "192.168.0.3", 1234);
+
   let mut ring = Ring::new(3, &test_node1);
   ring.add(&test_node2);
   ring.add(&test_node3);
@@ -62,13 +68,17 @@ fn main() {
 
   println!("\nThe full ring is");
   for vnode in &ring.vnodes {
-    println!("\t{}. Node {} Replica {}", vnode.hash, vnode.node, vnode.replica);
+    println!("\t{} => Replica {} of {}", vnode.hash, vnode.replica, vnode.node);
+  }
+
+
+  println!("\nLet's look up some keys");
+  for key in "where are all these nodes?".split_whitespace() {
+    match ring.get(key) {
+      Some(node) => println!("\tkey '{}' is on {}", key, node),
+      None => println!("Couldn't find a node for that key. This should only happen if an error occurs :-("),
+    }
   }
 
   println!("\n");
-  let key = "hello world";
-  match ring.get(key) {
-    Some(node) => println!("Got node {} for key {}\n", node, key),
-    None => println!("Couldn't find a node for that key. This should only happen if an error occurs :-(\n"),
-  }
 }

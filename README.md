@@ -6,20 +6,22 @@
 ### Motivation
 
 
+
 ### Installation
 
 Add it to your `Cargo.toml`:
+
 ```shell
+[dependencies]
 consistency = "~1.0.0"
 ```
 
 
 ### Usage
 
+Check out [this example](../master/examples/example.rs) for full usage.
 
-See the [examples dir](../master/examples).
-
-There is only a single example right now. You can run it with `cargo run --example example`.
+You can run it with `cargo run --example example`.
 
 
 ### Contributing
