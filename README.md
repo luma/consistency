@@ -1,4 +1,4 @@
-# WTF SDP
+# Consistency
 
 [![Build Status](https://travis-ci.org/luma/consistency.svg?branch=master)](https://travis-ci.org/luma/consistency)
 
@@ -8,18 +8,14 @@
 
 ### Installation
 
-
+Add it to your `Cargo.toml`:
 ```shell
-git clone https://github.com/luma/wtfsdp.git
-cd wtfsdp
-npm link
+consistency = "~1.0.0"
 ```
 
 
 ### Usage
 
-
-### Examples
 
 See the [examples dir](../master/examples).
 
