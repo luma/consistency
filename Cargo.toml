@@ -1,6 +1,6 @@
 [package]
 name = "consistency"
-version = "1.0.0.pre-0"
+version = "1.0.0-pre.0"
 authors = ["Rolly Fordham <rolly@luma.co.nz>"]
 description = "A small crate that implements a consistently hashed ring of nodes"
 homepage = "https://github.com/luma/consistency"
