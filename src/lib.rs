@@ -7,35 +7,38 @@ extern crate crypto;
 use std::vec::Vec;
 use std::boxed::Box;
 use std::cmp::Ordering;
+use std::fmt;
 use std::fmt::Display;
 use std::fmt::Debug;
 
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 
+
 /// Generate a Sha1 from a string key.
 ///
-fn hash_of(key: &str) -> String {
+pub fn hash_key<'b, S: Into<&'b str>>(key: S) -> String {
   let mut hasher = Sha1::new();
-  hasher.input_str(key);
+  hasher.input_str(key.into());
   hasher.result_str()
 }
 
-// TODO Should be hashable as well
+
+
 pub trait Node: Clone + Debug + Display + Eq + Ord {
   fn name(&self) -> String;
 }
 
 #[derive(Debug, Eq)]
 pub struct VNode <'a, N> where N: Node + 'a {
-  replica: usize,
-  node: &'a N,
-  hash: String,
+  pub replica: usize,
+  pub node: &'a N,
+  pub hash: String,
 }
 
 impl<'a, N: Node + 'a> VNode<'a, N> {
   pub fn new(replica: usize, node: &'a N) -> Self {
-    let hash = hash_of(format!("{}_{}", node.name(), replica).as_str());
+    let hash = hash_key(format!("{}_{}", node.name(), replica).as_str());
 
     VNode {
       replica: replica,
@@ -51,12 +54,6 @@ impl<'a, N: Node + 'a> PartialEq for VNode<'a, N> {
   }
 }
 
-impl<'a, N: Node + 'a> PartialEq<String> for VNode<'a, N> {
-  fn eq(&self, other: &String) -> bool {
-    self.hash == *other
-  }
-}
-
 impl<'a, N: Node + 'a> Ord for VNode<'a, N> {
   fn cmp(&self, other: &Self) -> Ordering {
     self.hash.cmp(&other.hash)
@@ -69,9 +66,22 @@ impl<'a, N: Node + 'a> PartialOrd for VNode<'a, N> {
   }
 }
 
+impl<'a, N: Node + 'a> Display for VNode<'a, N> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "VNode<({}:{}:{})>", self.node.name(), self.replica, self.hash)
+  }
+}
+
 // TODO implement Cmp, etc for VNode
 
 pub type VNodes<'a, N> = Vec<VNode<'a, N>>;
+
+fn create_replicas_for_node<N: Node>(replicas: usize, node: &N) -> VNodes<N> {
+  let mut vnodes: VNodes<_> = (0..replicas).map(|r| VNode::new(r, node))
+                                           .collect();
+  vnodes.sort();
+  vnodes
+}
 
 pub struct Ring <'a, N> where N: Node + 'a {
   pub replicas: usize,
@@ -82,23 +92,23 @@ pub struct Ring <'a, N> where N: Node + 'a {
 impl<'a, N: Node + 'a> Ring<'a, N> {
   pub fn new(replicas: usize, seed_node: &'a N) -> Self {
     // TODO VNodes should be created with references to &*ring.nodes[0] instead of seed_node
-    let mut vnodes = (0..replicas).map(|r| VNode::new(r, seed_node))
-                              .collect::<VNodes<'a, N>>();
-    vnodes.sort();
-
     Ring {
       replicas: replicas,
       nodes: vec![Box::new(seed_node.clone())],
-      vnodes: vnodes,
+      vnodes: create_replicas_for_node(replicas, seed_node),
     }
   }
 
-  pub fn contains(&self, search_node: &'a N) -> bool {
-    let search_name = search_node.name();
-    self.nodes.iter().any(|node| node.name() == search_name)
+  pub fn contains_name<S: Into<String>>(&self, name: S) -> bool {
+    let str_name = name.into();
+    self.nodes.iter().any(|ref node| node.name() == str_name)
   }
 
-  pub fn add_node(&mut self, node: &'a N, replicas: usize) {
+  pub fn contains(&self, search_node: &'a N) -> bool {
+    self.contains_name(search_node.name())
+  }
+
+  pub fn add(&mut self, node: &'a N) {
     if self.contains(node) {
       // The Ring already has this node
       return;
@@ -106,40 +116,54 @@ impl<'a, N: Node + 'a> Ring<'a, N> {
 
     self.nodes.push(Box::new(node.clone()));
 
-    for r in 0..replicas {
-      self.vnodes.push(VNode::new(r, &node))
+    let mut i = 0;
+    let mut new_vnodes = create_replicas_for_node(self.replicas, node);
+
+    // Insert our new vnodes in place.
+    while i < self.vnodes.len() {
+      if new_vnodes.is_empty() {
+        break;
+      }
+
+      if self.vnodes[i] >= new_vnodes[0] {
+        self.vnodes.insert(i, new_vnodes.remove(0));
+      }
+
+      i += 1;
     }
 
-    // TODO This sort is stable, but it still allocates 2 * self.vnodes.len(). We should
-    // just insert the new vnodes exactly into place:
-    //   1. sort the new nodes
-    //   2. walk self.vnodes once inserting the first new node when it's hash is smaller or equal to the existing node
-    //   3. if new nodes isn't empty after then add them to the front on self.vnodes
-    // NOTE This assumes that Cmp is implemented for VNode + VNode
-    self.vnodes.sort();
+    // If we still have nodes left then they must have smaller hashes than the
+    // nodes in self.vnodes. Lets put them before the other vnodes.
+    while !new_vnodes.is_empty() {
+      self.vnodes.push(new_vnodes.remove(0));
+    }
   }
 
-  pub fn remove_node(&mut self, node: N) {
-    if let Ok(i) = self.nodes.binary_search_by(|box_node| (**box_node).cmp(&node)) {
+  pub fn remove(&mut self, node: &'a N) {
+    if let Ok(i) = self.nodes.binary_search_by(|box_node| (**box_node).cmp(node)) {
       self.nodes.remove(i);
-      self.vnodes.retain(|vnode| vnode.node.eq(&node));
+      self.vnodes.retain(|ref vnode| vnode.node.eq(node));
     }
   }
 
-  pub fn lookup(&self, key: &str) -> Option<&N>  {
+  pub fn get_with_hash<S: Into<String>>(&self, hash: S) -> Option<&N>  {
     if self.vnodes.is_empty() {
       return None;
     }
 
-    let key_hash = hash_of(key);
+    let key_hash = hash.into();
 
     // Find the first vnode with a hash >= key_hash. If we don't find
     // one return the first vnode instead.
     //
     self.vnodes.iter()
                .find(|&vnode| vnode.hash >= key_hash)
-               .map(|vnode| vnode.node)
+               .map(|ref vnode| vnode.node)
                .or_else(|| Some(self.vnodes[0].node))
+  }
+
+  pub fn get<'b, S: Into<&'b str>>(&self, key: S) -> Option<&N>  {
+    self.get_with_hash(hash_key(key))
   }
 }
 
@@ -150,8 +174,9 @@ impl<'a, N: Node + 'a> Ring<'a, N> {
 mod tests {
   use super::*;
   use std::fmt;
+  use std::cmp::Ordering;
 
-  #[derive(Debug, Clone)]
+  #[derive(Debug, Clone, Eq, Ord)]
   struct TestNode {
     id: String,
   }
@@ -168,6 +193,18 @@ mod tests {
     }
   }
 
+  impl PartialOrd for TestNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+      Some(self.name().cmp(&other.name()))
+    }
+  }
+
+  impl PartialEq for TestNode {
+    fn eq(&self, other: &Self) -> bool {
+      self.name() == other.name()
+    }
+  }
+
   impl fmt::Display for TestNode {
       fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
           write!(f, "TestNode<({})>", self.name())
@@ -179,27 +216,61 @@ mod tests {
   fn contains_tests() {
     let test_node1 = TestNode::new("Foo");
     let test_node2 = TestNode::new("Bar");
-    let ring = Ring::new(8, &test_node1);
+    let ring = Ring::new(3, &test_node1);
 
-    assert_eq!(ring.contains(TestNode::new("Foo")), true);
-    assert_eq!(ring.contains(test_node2), false);
+    assert_eq!(ring.contains(&TestNode::new("Foo")), true);
+    assert_eq!(ring.contains(&test_node2), false);
   }
 
   #[test]
   fn contains_name_tests() {
     let test_node1 = TestNode::new("Foo");
-    let ring = Ring::new(8, &test_node1);
+    let ring = Ring::new(3, &test_node1);
 
     assert_eq!(ring.contains_name("Foo"), true);
     assert_eq!(ring.contains_name("Bar"), false);
   }
 
   #[test]
-  fn size_test() {
+  fn get_nodes_test() {
     let test_node1 = TestNode::new("Foo");
-    let ring = Ring::new(8, &test_node1);
-    println!("VNODES {}", ring.vnodes.len());
-    assert_eq!(ring.vnodes.len(), 8);
+    let test_node2 = TestNode::new("Bar");
+    let test_node3 = TestNode::new("Baz");
+    let mut ring = Ring::new(3, &test_node1);
+
+    // Initially there is only the seed node so everything maps to it
+    assert_eq!(ring.get("first"), Some(&test_node1));
+
+    ring.add(&test_node2);
+    ring.add(&test_node3);
+
+    // The ring should now be partitioned into 9 vnodes that reference 3 nodes
+
+    // We should always be able to get back a node by using a specific vnodes key.
+    // VNode keys are of the form "{node name}_{replica number}"
+    //
+    for node in &[&test_node1, &test_node2, &test_node3] {
+      for r in 0..3 {
+        let key = format!("{}_{}", node.name(), r);
+        println!("Verify replica {} of node {}: {}", r, node.name(), key);
+        assert_eq!(ring.get(key.as_str()), Some(*node));
+      }
+    }
+
+    // Key lookup should map to the nearest node
+    // TODO: test that keys map to the correct nodes
+  }
+
+  #[test]
+  fn vnodes_partition_test() {
+    let test_node1 = TestNode::new("Foo");
+    let test_node2 = TestNode::new("Bar");
+    let mut ring = Ring::new(3, &test_node1);
+
+    assert_eq!(ring.vnodes.len(), 3);
+
+    ring.add(&test_node2);
+    assert_eq!(ring.vnodes.len(), 6);
   }
 
 }
