@@ -9,7 +9,6 @@ use std::boxed::Box;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Display;
-use std::fmt::Debug;
 
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
@@ -25,7 +24,7 @@ pub fn hash_key<'b, S: Into<&'b str>>(key: S) -> String {
 
 
 
-pub trait Node: Clone + Debug + Display + Eq + Ord {
+pub trait Node: Clone + Display + Eq + Ord {
   fn name(&self) -> String;
 }
 
