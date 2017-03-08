@@ -1,7 +1,7 @@
 #![feature(plugin)]
-#![plugin(clippy)]
 #![feature(custom_derive)]
-#[macro_use]
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
 extern crate crypto;
 
 use std::vec::Vec;
